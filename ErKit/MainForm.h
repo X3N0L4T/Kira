@@ -23,6 +23,18 @@ namespace ErKit {
 		Label^ lblStatusSpeech;
 		Label^ lblVersion;
 
+		void pnlSidebar_Paint(Object^ sender, PaintEventArgs^ e) {
+			Graphics^ g = e->Graphics;
+			g->SmoothingMode = Drawing2D::SmoothingMode::AntiAlias;
+
+			//cam icon
+			Drawing::Pen^ activePen = gcnew Drawing::Pen(Color::FromArgb(55, 138, 221), 1.5f);
+			Drawing::Pen^ inactivePen = gcnew Drawing::Pen(Color::FromArgb(74, 74, 85), 1.5f);
+
+			//Active highlight bg
+			g->FillRectangle(gcnew SolidBrush(Color::FromArgb(30, 42, 58)), 8, 12, 36, 32);
+	}
+
 		void InitializeComponent() {
 
 			//--- Form
@@ -39,6 +51,7 @@ namespace ErKit {
 			pnlSidebar->BackColor = Color::FromArgb(17, 17, 19);
 			pnlSidebar->Size = Drawing::Size(52, 662);
 			pnlSidebar->Location = Point(0, 0);
+			pnlSidebar->Paint += gcnew PaintEventHandler(this, &MainForm::pnlSidebar_Paint);
 
 			//--- Camera Panel
 			pnlCamera = gcnew Panel();
