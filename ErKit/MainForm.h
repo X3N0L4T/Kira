@@ -33,6 +33,27 @@ namespace ErKit {
 
 			//Active highlight bg
 			g->FillRectangle(gcnew SolidBrush(Color::FromArgb(30, 42, 58)), 8, 12, 36, 32);
+
+			//cam body
+			g->DrawRectangle(activePen, 12, 20, 22, 16);
+			//cam lens
+			g->DrawEllipse(activePen, 19, 24, 8, 8);
+			//cam flash dot
+			g->FillEllipse(gcnew SolidBrush(Color::FromArgb(55, 138, 221)), 32, 21, 4, 4);
+
+			//clock/log
+			g->DrawEllipse(inactivePen, 12, 62, 22, 22);
+			g->DrawLine(inactivePen, 23, 108, 23, 112);
+			g->DrawLine(inactivePen, 23, 126, 23, 130);
+			g->DrawLine(inactivePen, 12, 119, 16, 119);
+			g->DrawLine(inactivePen, 30, 119, 34, 119);
+
+			//profile
+			g->DrawEllipse(inactivePen, 16, 580, 14, 14);
+			g->DrawArc(inactivePen, 10, 596, 26, 14, 180, 180);
+
+			delete activePen;
+			delete inactivePen;
 	}
 
 		void InitializeComponent() {
