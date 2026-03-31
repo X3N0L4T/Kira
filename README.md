@@ -94,8 +94,8 @@ Open `ErKit.slnx` in Visual Studio, then press **F5** to build and run.
 
 - [x] Project scaffold and GitHub setup
 - [x] Dark UI shell — camera panel, status bar, sidebar
-- [ ] Live camera feed via OpenCV
-- [ ] Frame capture and preprocessing
+- [x] Live camera feed via OpenCV
+- [x] Frame capture and preprocessing
 - [ ] AI model integration for scene analysis
 - [ ] Text-to-speech response pipeline
 - [ ] Settings panel and configuration
