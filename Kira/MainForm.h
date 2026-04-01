@@ -1,5 +1,6 @@
 #pragma once
 #include <opencv2/opencv.hpp>
+#include <fstream>
 
 namespace Kira {
 
@@ -14,10 +15,9 @@ namespace Kira {
             InitializeComponent();
             cameraRunning = false;
             activeTab = 0;
-            highlightAlpha = 40;
-            animTimer = gcnew System::Windows::Forms::Timer();
-            animTimer->Interval = 16;
-            animTimer->Tick += gcnew EventHandler(this, &MainForm::AnimTick);
+            latestFrame = nullptr;
+            annotatedFrame = nullptr;
+            hasAnnotation = false;
         }
 
         ~MainForm() {
@@ -66,6 +66,19 @@ namespace Kira {
         bool cameraRunning;
         int activeTab;
 
+        //Shared frame buffer
+        cv::Mat* latestFrame;
+        cv::Mat* annotatedFrame;
+        bool hasAnnotation;
+
+        //AI
+        Thread^ aiThread;
+        bool aiRunning;
+        cv::dnn::Net* yoloNet;
+        System::Collections::Generic::List<String^>^ cocoNames;
+        Label^ lblKiraOutput;
+        Panel^ pnlAIBar;
+
         //Animation
         System::Windows::Forms::Timer^ animTimer;
         int highlightAlpha;
@@ -112,18 +125,22 @@ namespace Kira {
                 *cap >> frame;
                 if (frame.empty()) continue;
 
-                //Convert BGR to RGB
+                //Store latest frame for AI thread to pick up
+                if (latestFrame) delete latestFrame;
+                latestFrame = new cv::Mat(frame.clone());
+
+                //Use annotated frame if available, otherwise raw
+                cv::Mat display;
+                if (hasAnnotation && annotatedFrame && !annotatedFrame->empty())
+                    display = annotatedFrame->clone();
+                else
+                    display = frame;
+
+                //Convert and display
                 cv::Mat rgb;
-                cv::cvtColor(frame, rgb, cv::COLOR_BGR2RGB);
-
-                //Resize to fit
+                cv::cvtColor(display, rgb, cv::COLOR_BGR2RGB);
                 cv::Mat resized;
-                cv::resize(rgb, resized, cv::Size(
-                    picFeed->Width,
-                    picFeed->Height
-                ));
-
-                //Convert to bitmap and display
+                cv::resize(rgb, resized, cv::Size(picFeed->Width, picFeed->Height));
                 Drawing::Bitmap^ bmp = MatToBitmap(resized);
                 UpdateFeed(bmp);
 
@@ -198,6 +215,7 @@ namespace Kira {
 
         void StopCamera() {
             cameraRunning = false;
+            StopAI();
             if (cameraThread != nullptr && cameraThread->IsAlive)
                 cameraThread->Join(2000);
         }
@@ -276,6 +294,7 @@ namespace Kira {
             highlightAlpha = 40;
             AddLog("Kira started");
             StartCamera();
+            StartAI();
         }
 
         //Sidebar paint
@@ -330,6 +349,191 @@ namespace Kira {
             delete activeBg;
             delete activeFill;
             delete inactiveFill;
+        }
+
+        //Load YOLO model and class names
+        bool LoadKiraModel() {
+            try {
+                //Load coco class names
+                cocoNames = gcnew System::Collections::Generic::List<String^>();
+                std::ifstream* nameFile = new std::ifstream("C:\\Kira\\models\\coco.names");
+                if (!nameFile->is_open()) {
+                    delete nameFile;
+                    AddLog("Kira: Failed to load coco.names");
+                    return false;
+                }
+                std::string line;
+                while (std::getline(*nameFile, line)) {
+                    if (!line.empty())
+                        cocoNames->Add(gcnew String(line.c_str()));
+                }
+                delete nameFile;
+
+                //Load YOLO network
+                cv::dnn::Net net = cv::dnn::readNetFromDarknet(
+                    "C:\\Kira\\models\\yolov4.cfg",
+                    "C:\\Kira\\models\\yolov4.weights"
+                );
+                net.setPreferableBackend(cv::dnn::DNN_BACKEND_OPENCV);
+                net.setPreferableTarget(cv::dnn::DNN_TARGET_CPU);
+                yoloNet = new cv::dnn::Net(net);
+
+                AddLog("Kira: Vision model loaded successfully");
+                UpdateAIStatus(true);
+                return true;
+            }
+            catch (...) {
+                AddLog("Kira: Failed to load vision model");
+                return false;
+            }
+        }
+
+        //AI inference thread
+        void AILoop() {
+            if (!LoadKiraModel()) return;
+
+            while (aiRunning) {
+                //Grab current frame
+                if (!latestFrame || latestFrame->empty()) {
+                    Thread::Sleep(100);
+                    continue;
+                }
+                cv::Mat frame = latestFrame->clone();
+
+                //Run YOLO
+                cv::Mat blob;
+                cv::dnn::blobFromImage(frame, blob, 1.0 / 255.0,
+                    cv::Size(416, 416), cv::Scalar(), true, false);
+                yoloNet->setInput(blob);
+
+                //Get output layer names
+                std::vector<std::string> outNames = yoloNet->getUnconnectedOutLayersNames();
+                std::vector<cv::Mat> outs;
+                yoloNet->forward(outs, outNames);
+
+                //Parse detections
+                std::vector<int> classIds;
+                std::vector<float> confidences;
+                std::vector<cv::Rect> boxes;
+                float confThreshold = 0.5f;
+                float nmsThreshold = 0.4f;
+
+                for (auto& out : outs) {
+                    for (int i = 0; i < out.rows; i++) {
+                        float* data = (float*)out.data + i * out.cols;
+                        cv::Mat scores = out.row(i).colRange(5, out.cols);
+                        cv::Point classIdPoint;
+                        double confidence;
+                        cv::minMaxLoc(scores, nullptr, &confidence, nullptr, &classIdPoint);
+                        if (confidence > confThreshold) {
+                            int cx = (int)(data[0] * frame.cols);
+                            int cy = (int)(data[1] * frame.rows);
+                            int w = (int)(data[2] * frame.cols);
+                            int h = (int)(data[3] * frame.rows);
+                            boxes.push_back(cv::Rect(cx - w / 2, cy - h / 2, w, h));
+                            confidences.push_back((float)confidence);
+                            classIds.push_back(classIdPoint.x);
+                        }
+                    }
+                }
+
+                //Non-max suppression
+                std::vector<int> indices;
+                cv::dnn::NMSBoxes(boxes, confidences, confThreshold, nmsThreshold, indices);
+
+                //Draw boxes and build description
+                System::Collections::Generic::List<String^>^ seen =
+                    gcnew System::Collections::Generic::List<String^>();
+
+                for (int idx : indices) {
+                    cv::Rect box = boxes[idx];
+                    int classId = classIds[idx];
+                    String^ label = (classId < cocoNames->Count) ? cocoNames[classId] : "unknown";
+
+                    //Draw box on frame
+                    cv::rectangle(frame, box, cv::Scalar(45, 110, 180), 2);
+                    std::string labelStr(
+                        (const char*)System::Runtime::InteropServices::Marshal::StringToHGlobalAnsi(label).ToPointer()
+                    );
+                    cv::putText(frame, labelStr,
+                        cv::Point(box.x, box.y - 6),
+                        cv::FONT_HERSHEY_SIMPLEX, 0.5,
+                        cv::Scalar(45, 110, 180), 1);
+
+                    if (!seen->Contains(label))
+                        seen->Add(label);
+                }
+
+                //Build natural language output
+                String^ description = "";
+                if (seen->Count == 0) {
+                    description = "I don't see anything recognizable right now.";
+                }
+                else {
+                    description = "I can see ";
+                    for (int i = 0; i < seen->Count; i++) {
+                        if (i > 0 && i == seen->Count - 1)
+                            description += " and ";
+                        else if (i > 0)
+                            description += ", ";
+                        description += seen[i];
+                    }
+                    description += ".";
+                }
+
+                //Store annotated frame for camera thread to display
+                if (annotatedFrame) delete annotatedFrame;
+                annotatedFrame = new cv::Mat(frame.clone());
+                hasAnnotation = true;
+                UpdateKiraOutput(description);
+
+                //Run inference every 2 seconds
+                Thread::Sleep(2000);
+            }
+        }
+
+        //Start AI
+        void StartAI() {
+            aiRunning = true;
+            aiThread = gcnew Thread(gcnew ThreadStart(this, &MainForm::AILoop));
+            aiThread->IsBackground = true;
+            aiThread->Start();
+            AddLog("Kira: Vision system starting...");
+        }
+
+        void StopAI() {
+            aiRunning = false;
+            if (aiThread != nullptr && aiThread->IsAlive)
+                aiThread->Join(3000);
+        }
+
+        //Thread-safe UI updates
+        delegate void UpdateKiraOutputDelegate(String^ text);
+        void UpdateKiraOutput(String^ text) {
+            if (lblKiraOutput->InvokeRequired) {
+                lblKiraOutput->Invoke(
+                    gcnew UpdateKiraOutputDelegate(this, &MainForm::UpdateKiraOutput), text);
+                return;
+            }
+            lblKiraOutput->Text = text;
+            AddLog("Kira: " + text);
+        }
+
+        delegate void UpdateAIStatusDelegate(bool online);
+        void UpdateAIStatus(bool online) {
+            if (lblStatusAI->InvokeRequired) {
+                lblStatusAI->Invoke(
+                    gcnew UpdateAIStatusDelegate(this, &MainForm::UpdateAIStatus), online);
+                return;
+            }
+            if (online) {
+                lblStatusAI->Text = L"AI  Active";
+                lblStatusAI->ForeColor = Color::FromArgb(76, 175, 130);
+            }
+            else {
+                lblStatusAI->Text = L"AI  Error";
+                lblStatusAI->ForeColor = Color::FromArgb(226, 75, 74);
+            }
         }
 
         void InitializeComponent() {
@@ -420,6 +624,22 @@ namespace Kira {
             pnlCamera->Controls->Add(picFeed);
             pnlCamera->Controls->Add(lblCameraTitle);
             pnlCamera->Controls->Add(lblCamStatus);
+
+            //Kira output bar - shows what she sees
+            pnlAIBar = gcnew Panel();
+            pnlAIBar->BackColor = Color::FromArgb(17, 17, 22);
+            pnlAIBar->Size = Drawing::Size(1030, 28);
+            pnlAIBar->Location = Point(0, 502);
+
+            lblKiraOutput = gcnew Label();
+            lblKiraOutput->Text = L"Kira is initializing vision...";
+            lblKiraOutput->ForeColor = Color::FromArgb(45, 110, 180);
+            lblKiraOutput->Font = gcnew Drawing::Font("Segoe UI", 8.5f);
+            lblKiraOutput->Location = Point(12, 6);
+            lblKiraOutput->AutoSize = true;
+
+            pnlAIBar->Controls->Add(lblKiraOutput);
+            pnlCamera->Controls->Add(pnlAIBar);
 
             //Logs panel
             pnlLogs = gcnew Panel();
