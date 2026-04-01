@@ -1,7 +1,7 @@
 #pragma once
 #include <opencv2/opencv.hpp>
 
-namespace ErKit {
+namespace Kira {
 
     using namespace System;
     using namespace System::Windows::Forms;
@@ -274,7 +274,7 @@ namespace ErKit {
         void MainForm_Load(Object^ sender, EventArgs^ e) {
             targetAlpha = 40;
             highlightAlpha = 40;
-            AddLog("ErKit started");
+            AddLog("Kira started");
             StartCamera();
         }
 
@@ -335,7 +335,7 @@ namespace ErKit {
         void InitializeComponent() {
 
             //Form
-            this->Text = L"ErKit";
+            this->Text = L"Kira";
             this->Size = Drawing::Size(1100, 700);
             this->BackColor = Color::FromArgb(18, 18, 20);
             this->ForeColor = Color::FromArgb(200, 200, 210);
@@ -540,7 +540,7 @@ namespace ErKit {
             lblProfileTitle->AutoSize = true;
 
             lblAppName = gcnew Label();
-            lblAppName->Text = L"ErKit";
+            lblAppName->Text = L"Kira";
             lblAppName->ForeColor = Color::FromArgb(200, 200, 210);
             lblAppName->Font = gcnew Drawing::Font("Segoe UI", 28.0f, FontStyle::Regular);
             lblAppName->Location = Point(40, 60);
@@ -561,7 +561,7 @@ namespace ErKit {
             lblAppBuild->AutoSize = true;
 
             lblAppCredits = gcnew Label();
-            lblAppCredits->Text = L"Real-time AI vision and audio processing.\nBuilt from scratch as a learning project.\n\nGitHub: github.com/X3N0L4T/ErKit";
+            lblAppCredits->Text = L"Real-time AI vision and audio processing.\nBuilt from scratch as a learning project.\n\nGitHub: github.com/X3N0L4T/Kira";
             lblAppCredits->ForeColor = Color::FromArgb(100, 100, 112);
             lblAppCredits->Font = gcnew Drawing::Font("Segoe UI", 9.0f);
             lblAppCredits->Location = Point(40, 200);
@@ -609,7 +609,7 @@ namespace ErKit {
             lblStatusSpeech->Font = gcnew Drawing::Font("Segoe UI", 8.5f);
 
             lblVersion = gcnew Label();
-            lblVersion->Text = L"ErKit©2026";
+            lblVersion->Text = L"Kira©2026";
             lblVersion->ForeColor = Color::FromArgb(74, 74, 85);
             lblVersion->Location = Point(920, 12);
             lblVersion->AutoSize = true;
