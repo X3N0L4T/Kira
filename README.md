@@ -112,9 +112,9 @@ Download and place in `C:\Kira\models\`:
 - [x] Live camera feed via OpenCV
 - [x] Sidebar navigation — logs, settings, about
 - [x] Async camera device detection
-- [ ] YOLOv4 object detection on live feed
-- [ ] Natural language scene description
-- [ ] Overlay detection results on camera feed
+- [x] YOLOv4 object detection on live feed
+- [x] Natural language scene description
+- [x] Overlay detection results on camera feed
 - [ ] Text-to-speech response pipeline
 - [ ] Persistent memory / context awareness
 - [ ] Robotic embodiment interface layer
